@@ -1,0 +1,80 @@
+# Prompt for CSV file path
+$csvFilePath = Read-Host "Please enter the path to the CSV file"
+$logFilePath = "C:\PS\MidTermOutput$((Get-Date).ToString('yyyyMMddHHmmss')).log"
+$domainDN = "DC=StudentZone8397,DC=com" # Adjust based on your actual domain DN
+
+# Ensure the log file directory exists
+$logFileDirectory = Split-Path -Path $logFilePath
+if (-not (Test-Path -Path $logFileDirectory)) {
+    New-Item -ItemType Directory -Path $logFileDirectory
+}
+
+# Function to log messages
+function Log-Message {
+    param (
+        [string]$Message
+    )
+    Add-Content -Path $script:logFilePath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
+}
+
+# Verify the CSV file exists
+if (-Not (Test-Path -Path $csvFilePath)) {
+    Write-Host "CSV file not found. Please ensure the file path is correct."
+    exit
+}
+
+# Import CSV data
+$csvData = Import-Csv -Path $csvFilePath
+
+# Function to ensure the OU and Group exist
+function Ensure-ADObjects {
+    param (
+        [string]$DepartmentName
+    )
+    $ouPath = "OU=$DepartmentName,$domainDN"
+    
+    # Check and create OU if necessary
+    $ou = Get-ADOrganizationalUnit -Filter "Name -eq '$DepartmentName'" -ErrorAction SilentlyContinue
+    if ($null -eq $ou) {
+        New-ADOrganizationalUnit -Name $DepartmentName -Path "OU=Departments,$domainDN" -ProtectedFromAccidentalDeletion $false
+        Log-Message "Created OU for $DepartmentName"
+    }
+
+    # Check and create Security Group if necessary
+    $group = Get-ADGroup -Filter "Name -eq '$DepartmentName'" -ErrorAction SilentlyContinue
+    if ($null -eq $group) {
+        New-ADGroup -Name $DepartmentName -GroupScope Global -Path $ouPath
+        Log-Message "Created Security Group for $DepartmentName"
+    }
+}
+
+# Iterate through CSV to create users
+foreach ($user in $csvData) {
+    $ouName = $user.Department
+    $userName = $user.UserName
+    $password = $user.Password
+
+    # Ensure OU and Group exist
+    Ensure-ADObjects -DepartmentName $ouName
+
+    # Create user
+    $userExists = Get-ADUser -Filter "SamAccountName -eq '$userName'" -ErrorAction SilentlyContinue
+    if ($null -eq $userExists) {
+        $userParams = @{
+            SamAccountName = $userName
+            UserPrincipalName = "$userName@StudentZone8397.com"
+            Name = $userName
+            Enabled = $true
+            ChangePasswordAtLogon = $true
+            AccountPassword = (ConvertTo-SecureString -AsPlainText $password -Force)
+            Path = "OU=$ouName,OU=Departments,$domainDN"
+        }
+        New-ADUser @userParams
+        Add-ADGroupMember -Identity $ouName -Members $userName
+        Log-Message "Created user $userName in $ouName"
+    } else {
+        Log-Message "User $userName already exists"
+    }
+}
+
+Log-Message "Script execution completed."

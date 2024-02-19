@@ -1,7 +1,12 @@
+#Sebastian Patino
+# 200528397
+# MId term
+
+
 # Prompt for CSV file path
 $csvFilePath = Read-Host "Please enter the path to the CSV file"
 $logFilePath = "C:\PS\MidTermOutput$((Get-Date).ToString('yyyyMMddHHmmss')).log"
-$domainDN = "DC=StudentZone8397,DC=com" # Adjust based on your actual domain DN
+$domainDN = "DC=StudentZone8397,DC=com" 
 
 # Ensure the log file directory exists
 $logFileDirectory = Split-Path -Path $logFilePath
@@ -76,5 +81,10 @@ foreach ($user in $csvData) {
         Log-Message "User $userName already exists"
     }
 }
+
+Catch{
+Write-Host "Error $($Error[0].Exception.Message)" -ForegroundColor Red
+} 
+
 
 Log-Message "Script execution completed."
